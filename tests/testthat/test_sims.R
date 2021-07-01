@@ -60,7 +60,6 @@ simFunc = function(lmfull, lmred, mask, data, nboot, cfts){
     ### BOOTSTRAP METHODS
     statmap = get(statmapname)
     # normal bootstrap
-    #pbjNorm = getBoots(pbjSEI(statmap, nboot = nboot, cfts.s = cfts))
     if(statmapname %in% c('tRobustStatmap')){
       pbjNormT = pbjInference(statmap, nboot = nboot, thr = thrs, mask=statmap$mask, statistic=simStats, method='robust')
       # Rademacher bootstrap
