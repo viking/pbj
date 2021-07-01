@@ -170,12 +170,12 @@ SEXP pbj_pbjBootRobustX(SEXP qr, SEXP res, SEXP x1res, SEXP h, SEXP df) {
   F77_CALL(dqrrsd)(REAL(qr_qr), &n_i, &k_i, REAL(qr_qraux), res2_dd, &ny_i, rsd_dd);
   Free(res2_dd);
 
-  /* rsd <- sweep(rsd, 1, 1-h, '/') */
+  /* rsd <- sweep(rsd, 1, h, '/') */
   h_dd = REAL(h);
   rsd_idx_i = 0;
   for (col_i = 0; col_i < ncol_i; col_i++) {
     for (row_i = 0; row_i < nrow_i; row_i++) {
-      rsd_dd[rsd_idx_i] = rsd_dd[rsd_idx_i] / (1 - h_dd[row_i]);
+      rsd_dd[rsd_idx_i] = rsd_dd[rsd_idx_i] / h_dd[row_i];
       rsd_idx_i++;
     }
   }

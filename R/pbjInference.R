@@ -44,13 +44,21 @@ pbjInference = function(statMap, statistic = function(image) max(c(image)), nboo
   boots = list()
   bootdim = dim(rboot(n))
 
+  if(HC3){
+    h=rowSums(qr.Q(sqrtSigma$QR)^2); h = ifelse(h>=1, 1-eps, h)
+    #h=rowSums(qr.Q(qr(sqrtSigma$X))^2); h = ifelse(h>=1, 1-eps, h)
+  } else {
+    h = rep(0, n)
+  }
+  h = 1-h
+  sqrt_h = sqrt(h)
 
   # If sqrtSigma can be stored and accessed efficiently on disk this can be efficiently run in parallel
   pb = txtProgressBar(style=3, title='Generating null distribution')
   tmp = mask
   if(nboot>0){
     for(i in 1:nboot){
-      statimg = pbjBoot(sqrtSigma, rboot, bootdim, robust=robust, method = method, HC3=HC3, transform=transform)
+      statimg = pbjBoot(sqrtSigma, rboot, bootdim, robust=robust, method = method, h = h, sqrt_h = sqrt_h, transform=transform)
       tmp[ mask!=0] = statimg
       boots[[i]] = statistic(tmp, ...)
       setTxtProgressBar(pb, round(i/nboot,2))

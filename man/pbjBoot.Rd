@@ -9,7 +9,8 @@ pbjBoot(
   rboot = function(n) {     (2 * stats::rbinom(n, size = 1, prob = 0.5) - 1) },
   bootdim,
   method = c("wild", "permutation", "nonparametric"),
-  HC3 = TRUE,
+  h,
+  sqrt_h,
   robust = TRUE,
   transform = c("none", "t")
 )
@@ -23,7 +24,9 @@ pbjBoot(
 
 \item{method}{character, method to use for resampling procedure. Wild bootstrap, permutation, or nonparametric}
 
-\item{HC3}{logical, was HC3 estimator used?}
+\item{h}{HC3-related vector}
+
+\item{sqrt_h}{square root of h}
 
 \item{robust}{Generate robust statistics?}
 

@@ -37,16 +37,18 @@ test_that("pbj_pbjBootRobustX performs correctly when: method = 'wild', robust =
   df <- sqrtSigma$df
   h <- rowSums(qr.Q(sqrtSigma$QR)^2)
   h <- ifelse(h >= 1, 1 - eps, h)
+  h <- 1-h
+  sqrt_h <- sqrt(h)
 
-  res <- sweep(sqrtSigma$res, 1, rboot(n)/sqrt(1-h), '*')
-  BsqrtInv <- matrix(apply(sweep(simplify2array(rep(list(sweep(qr.resid(sqrtSigma$QR, res), 1, 1-h, '/')), df)), c(1,3), sqrtSigma$X1res, '*'), 2, function(x){ backsolve(r=qr.R(qr(x)), x=diag(ncol(x))) }), nrow=df^2, ncol=V)
+  res <- sweep(sqrtSigma$res, 1, rboot(n)/sqrt_h, '*')
+  BsqrtInv <- matrix(apply(sweep(simplify2array(rep(list(sweep(qr.resid(sqrtSigma$QR, res), 1, h, '/')), df)), c(1,3), sqrtSigma$X1res, '*'), 2, function(x){ backsolve(r=qr.R(qr(x)), x=diag(ncol(x))) }), nrow=df^2, ncol=V)
   statimg <- matrix(simplify2array(lapply(1:V, function(ind) crossprod(matrix(BsqrtInv[,ind], nrow=df, ncol=df), crossprod(sqrtSigma$X1res, res[,ind]) ) ), higher=TRUE ), nrow=df, ncol=V)
   expected <- colSums(statimg^2)
 
   # C implementation
   set.seed(1234)
   actual <- pbjBoot(sqrtSigma, rboot, bootdim, robust = TRUE, method = 'wild',
-                    HC3 = TRUE, transform = 'none')
+                    h = h, sqrt_h = sqrt_h, transform = 'none')
 
   expect(identical(actual, expected), "C implementation didn't match")
   expect(identical(sqrtSigma, readRDS(statMap$sqrtSigma)), "sqrtSigma was modified in-place")
