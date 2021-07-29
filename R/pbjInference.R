@@ -6,6 +6,8 @@
 #' @param rboot Function for generating random variables. Should return an n vector. Defaults to Rademacher random variable.
 #' @param method Character, method to use for resampling procedure. Wild bootstrap, permutation, or nonparametric
 #' @param runMode character, that controls output. cdf returns the empirical CDFs, bootstrap returns the bootstrapped statistics as a list.
+#' @param parallel boolean, Whether or not to use mclapply
+#' @param mc.cores integer, Number of cores for mclapply
 #' @param ... arguments passed to statistic function.
 #'
 #' @return Returns a list. if runMode=='bootstrap', the first element is the observed statistic value and the second is a list of the boostrap values. If runMode=='cdf', the first element is the observed statistic value, and the subsequent elements are the CDFs and ROIs, used for computing adjusted p-values and plotting.
@@ -13,38 +15,24 @@
 #' @importFrom utils setTxtProgressBar txtProgressBar
 #' @importFrom RNifti readNifti
 #' @export
-pbjInference = function(statMap, statistic = function(image) max(c(image)), nboot=5000, rboot=function(n){ (2*stats::rbinom(n, size=1, prob=0.5)-1)}, method=c('wild', 'permutation', 'nonparametric'), runMode=c('bootstrap', 'cdf'), ...){
+pbjInference = function(statMap, statistic = function(image) max(c(image)), nboot=5000, rboot=function(n){ (2*stats::rbinom(n, size=1, prob=0.5)-1)}, method=c('wild', 'permutation', 'nonparametric'), runMode=c('bootstrap', 'cdf'), parallel=FALSE, mc.cores=getOption('mc.cores', 2L), ...){
   if(class(statMap)[1] != 'statMap')
     warning('Class of first argument is not \'statMap\'.')
-  runMode = tolower(runMode[1])
+  runMode = match.arg(runMode)
 
   sqrtSigma <- statMap$sqrtSigma
+  if (parallel && !is.character(sqrtSigma)) {
+    stop("parallel mode is not supported for in-memory statMap")
+  }
   sqrtSigma <- if(is.character(sqrtSigma)) readRDS(sqrtSigma) else sqrtSigma
   mask = if(is.character(statMap$mask)) readNifti(statMap$mask) else statMap$mask
-  ndims = length(dim(mask))
-  stat = rawstat = stat.statMap(statMap)
-  template = statMap$template
-  df = sqrtSigma$df
-  rdf = sqrtSigma$rdf
-  robust = sqrtSigma$robust
-  HC3 = sqrtSigma$HC3
-  transform = sqrtSigma$transform
-  method = tolower(method[1])
-  obsstat = statistic(stat, ...)
-  rois  = if('rois' %in% names(formals(statistic))){
-    statistic(stat, ..., rois=TRUE)
-  } else {
-    NULL
-  }
+  method = match.arg(method)
 
   dims = dim(sqrtSigma$res)
   n = dims[1]
-  V=dims[2]
 
-  boots = list()
-  bootdim = dim(rboot(n))
-
-  if(HC3){
+  if(sqrtSigma$HC3){
+    eps=0.001
     h=rowSums(qr.Q(sqrtSigma$QR)^2); h = ifelse(h>=1, 1-eps, h)
     #h=rowSums(qr.Q(qr(sqrtSigma$X))^2); h = ifelse(h>=1, 1-eps, h)
   } else {
@@ -54,16 +42,30 @@ pbjInference = function(statMap, statistic = function(image) max(c(image)), nboo
   sqrt_h = sqrt(h)
 
   # If sqrtSigma can be stored and accessed efficiently on disk this can be efficiently run in parallel
-  pb = txtProgressBar(style=3, title='Generating null distribution')
   tmp = mask
   if(nboot>0){
-    for(i in 1:nboot){
-      statimg = pbjBoot(sqrtSigma, rboot, bootdim, robust=robust, method = method, h = h, sqrt_h = sqrt_h, transform=transform)
-      tmp[ mask!=0] = statimg
-      boots[[i]] = statistic(tmp, ...)
-      setTxtProgressBar(pb, round(i/nboot,2))
+    if (parallel) {
+      rboots <- sapply(rep(sqrtSigma$n, nboot), rboot)
+      boots = mclapply(1:nboot, function(i) {
+        statimg = pbjBootParallel(sqrtSigma, rboots[i], robust = sqrtSigma$robust,
+                                  method = method, h = h, sqrt_h = sqrt_h,
+                                  transform = sqrtSigma$transform)
+        tmp[ mask!=0] = statimg
+        statistic(tmp, ...)
+      }, mc.cores = mc.cores)
+    } else {
+      boots = list()
+      pb = txtProgressBar(style=3, title='Generating null distribution')
+      for(i in 1:nboot){
+        statimg = pbjBoot(sqrtSigma, rboot, robust = sqrtSigma$robust,
+                          method = method, h = h, sqrt_h = sqrt_h,
+                          transform = sqrtSigma$transform)
+        tmp[ mask!=0] = statimg
+        boots[[i]] = statistic(tmp, ...)
+        setTxtProgressBar(pb, round(i/nboot,2))
+      }
+      close(pb)
     }
-    close(pb)
   }
   rm(sqrtSigma) # Free large big memory matrix object
 
@@ -100,6 +102,13 @@ pbjInference = function(statMap, statistic = function(image) max(c(image)), nboo
                }
 
                # reindex ROIs and obsStat
+               stat = stat.statMap(statMap)
+               obsstat = statistic(stat, ...)
+               rois = if('rois' %in% names(formals(statistic))){
+                 statistic(stat, ..., rois=TRUE)
+               } else {
+                 NULL
+               }
                for(ind in 1:length(obsstat)){
                  newInds = order(obsstat[[ind]], decreasing=TRUE)
                  obsstat[[ind]] = obsstat[[ind]][newInds]
